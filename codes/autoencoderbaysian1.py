@@ -1,0 +1,90 @@
+import pandas as pd
+from sklearn.preprocessing import MinMaxScaler, LabelEncoder
+from sklearn.model_selection import train_test_split
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, Dense, LeakyReLU, BatchNormalization
+from tensorflow.keras.utils import plot_model
+from matplotlib import pyplot as plt
+
+# Load your dataset
+df = pd.read_csv('D:/new researches/Security/dataset/processed win dataset/windows10_dataset.csv')
+
+# Extract features and labels
+X = df.drop(columns=['label', 'type'])
+y = df['type']
+
+# Apply label encoding to y
+label_encoder = LabelEncoder()
+y_encoded = label_encoder.fit_transform(y)
+
+# Check for string values in X and encode them if exist
+for column in X.columns:
+    if X[column].dtype == 'object':
+        le = LabelEncoder()
+        X[column] = le.fit_transform(X[column])
+        print(f"Encoded column: {column}")
+
+# Number of input columns
+n_inputs = X.shape[1]
+
+# Split into train test sets
+X_train, X_test, y_train, y_test = train_test_split(X, y_encoded, test_size=0.2, random_state=1)
+
+# Scale data
+scaler = MinMaxScaler()
+scaler.fit(X_train)
+X_train = scaler.transform(X_train)
+X_test = scaler.transform(X_test)
+
+# Define encoder
+visible = Input(shape=(n_inputs,))
+# Encoder level 1
+e = Dense(n_inputs * 2)(visible)
+e = BatchNormalization()(e)
+e = LeakyReLU()(e)
+# Encoder level 2
+e = Dense(n_inputs)(e)
+e = BatchNormalization()(e)
+e = LeakyReLU()(e)
+
+# Bottleneck
+n_bottleneck = int(n_inputs / 2)  # Ensure this is an integer
+bottleneck = Dense(n_bottleneck)(e)
+
+# Define decoder, level 1
+d = Dense(n_inputs)(bottleneck)
+d = BatchNormalization()(d)
+d = LeakyReLU()(d)
+# Decoder level 2
+d = Dense(n_inputs * 2)(d)
+d = BatchNormalization()(d)
+d = LeakyReLU()(d)
+
+# Output layer
+output = Dense(n_inputs, activation='linear')(d)
+# Define autoencoder model
+model = Model(inputs=visible, outputs=output)
+# Compile autoencoder model
+model.compile(optimizer='adam', loss='mse')
+
+# Set the resolution of the plot
+plt.rcParams['figure.dpi'] = 2000  # Adjust the DPI value as needed
+
+# Plot the autoencoder
+plot_model(model, 'autoencoder_model1.png', show_shapes=True)
+
+# Fit the autoencoder model to reconstruct input
+history = model.fit(X_train, X_train, epochs=500, batch_size=21, verbose=2, validation_data=(X_test, X_test))
+
+# Plot loss
+plt.plot(history.history['loss'], label='train')
+plt.plot(history.history['val_loss'], label='test')
+plt.legend()
+plt.show()
+
+# Define an encoder model (without the decoder)
+encoder = Model(inputs=visible, outputs=bottleneck)
+plot_model(encoder, 'encoder_model1.png', show_shapes=True)
+
+# Save the encoder to file
+encoder.save('encoder1.h5')
